@@ -1,0 +1,221 @@
+﻿<Window x:Class="SimplexSolver.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SimplexSolver"
+        mc:Ignorable="d"
+        Title="Симплекс-метод - Решение задач ЛП" 
+        Height="700" Width="1100">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Панель управления -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button Content="Загрузить вариант 14" Click="LoadExample_Click" 
+                    Margin="0,0,10,0" Padding="10,5"/>
+            <Button Content="Решить симплекс-методом" Click="SolveSimplex_Click" 
+                    Margin="0,0,10,0" Padding="10,5" Background="#FF007ACC" Foreground="White"/>
+            <Button Content="Очистить" Click="Clear_Click" 
+                    Margin="0,0,10,0" Padding="10,5"/>
+            <Button Content="Экспорт в Excel" Click="ExportToExcel_Click" 
+                    Padding="10,5"/>
+        </StackPanel>
+
+        <!-- Ввод задачи -->
+        <GroupBox Grid.Row="1" Header="Постановка задачи" Margin="0,0,0,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Тип оптимизации -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5">
+                    <Label Content="Целевая функция:" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="cmbGoal" Width="100" Margin="10,0">
+                        <ComboBoxItem Content="max" IsSelected="True"/>
+                        <ComboBoxItem Content="min"/>
+                    </ComboBox>
+                    <Label Content="Количество переменных:" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                    <TextBox x:Name="txtVariables" Width="50" Text="3" Margin="5,0"/>
+                    <Label Content="Количество ограничений:" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                    <TextBox x:Name="txtConstraints" Width="50" Text="4" Margin="5,0"/>
+                    <Button Content="Создать таблицу" Click="CreateTable_Click" 
+                            Margin="20,0,0,0" Padding="5"/>
+                </StackPanel>
+
+                <!-- Коэффициенты целевой функции -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal">
+                    <Label Content="F(x) ="/>
+                    <ItemsControl x:Name="icObjective" ItemsSource="{Binding ObjectiveCoefficients}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="5,0">
+                                    <TextBlock Text="{Binding Value}" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" * x" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Index}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Grid>
+        </GroupBox>
+
+        <!-- Таблица ограничений -->
+        <GroupBox Grid.Row="2" Header="Ограничения">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Заголовки таблицы -->
+                    <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="0,0,0,1" 
+                            Background="#FFE0E0E0" Padding="5">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="120"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Ограничение" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="1" Text="Тип" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="2" Text="Выражение" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="3" Text="Значение" FontWeight="Bold"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Список ограничений -->
+                    <ItemsControl Grid.Row="1" x:Name="icConstraints" 
+                                  ItemsSource="{Binding Constraints}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#FFCCCCCC" BorderThickness="0,0,0,1" Padding="5">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="120"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" 
+                                                   VerticalAlignment="Center"/>
+
+                                        <ComboBox Grid.Column="1" SelectedIndex="{Binding TypeIndex}"
+                                                  VerticalAlignment="Center">
+                                            <ComboBoxItem Content="&lt;="/>
+                                            <ComboBoxItem Content="="/>
+                                            <ComboBoxItem Content=">="/>
+                                        </ComboBox>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" 
+                                                    VerticalAlignment="Center">
+                                            <ItemsControl ItemsSource="{Binding Coefficients}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="5,0">
+                                                            <TextBlock Text="{Binding Value}" 
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock Text=" * x" 
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding Index}" 
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock Text=" +" 
+                                                                       VerticalAlignment="Center" 
+                                                                       Margin="0,0,5,0"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+
+                                        <TextBox Grid.Column="3" Text="{Binding RightHandSide}" 
+                                                 Width="100" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </ScrollViewer>
+        </GroupBox>
+
+        <!-- Кнопки управления таблицей -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,10">
+            <Button Content="Добавить ограничение" Click="AddConstraint_Click" 
+                    Margin="0,0,10,0" Padding="10,5"/>
+            <Button Content="Удалить последнее" Click="RemoveConstraint_Click" 
+                    Padding="10,5"/>
+        </StackPanel>
+
+        <!-- Результаты -->
+        <TabControl Grid.Row="4">
+            <TabItem Header="Симплекс-таблицы">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="icSimplexTables" Margin="10">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <GroupBox Header="{Binding TableName}" Margin="0,0,0,10">
+                                    <DataGrid ItemsSource="{Binding Rows}" 
+                                              AutoGenerateColumns="False"
+                                              IsReadOnly="True"
+                                              CanUserAddRows="False"
+                                              CanUserDeleteRows="False">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Базис" 
+                                                                Binding="{Binding BasisVariable}"/>
+                                            <DataGridTextColumn Header="Cб" 
+                                                                Binding="{Binding CB}"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </GroupBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Решение">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="spResults" Margin="20">
+                        <TextBlock x:Name="tbSolution" FontSize="14" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="tbOptimalValue" FontSize="14" TextWrapping="Wrap" 
+                                   Margin="0,10,0,0"/>
+                        <TextBlock x:Name="tbRemainingResources" FontSize="14" TextWrapping="Wrap" 
+                                   Margin="0,10,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Лог вычислений">
+                <TextBox x:Name="txtLog" IsReadOnly="True" 
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         FontFamily="Consolas"
+                         TextWrapping="Wrap"/>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>
