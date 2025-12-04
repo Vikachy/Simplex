@@ -8,6 +8,8 @@ namespace SimplexSolver
     public class SimplexSolution
     {
         public bool IsOptimal { get; set; }
+        public bool IsFeasible { get; set; }
+        public bool IsUnbounded { get; set; }
         public double[] Solution { get; set; }
         public double OptimalValue { get; set; }
         public double[] SlackVariables { get; set; }
@@ -18,6 +20,7 @@ namespace SimplexSolver
     public class SimplexMethod
     {
         private StringBuilder log = new StringBuilder();
+        private const double EPSILON = 1e-10;
 
         public SimplexSolution Solve(LinearProgrammingProblem problem)
         {
@@ -25,23 +28,39 @@ namespace SimplexSolver
             log.AppendLine("=== РЕШЕНИЕ ЗАДАЧИ ЛИНЕЙНОГО ПРОГРАММИРОВАНИЯ ===");
             log.AppendLine();
 
-            // Шаг 1: Приведение к канонической форме
-            log.AppendLine("1. Приведение к канонической форме:");
-            var canonicalForm = ConvertToCanonicalForm(problem);
+            try
+            {
+                // Шаг 1: Приведение к канонической форме
+                log.AppendLine("1. Приведение к канонической форме:");
+                var canonicalForm = ConvertToCanonicalForm(problem);
 
-            // Шаг 2: Построение начальной симплекс-таблицы
-            log.AppendLine("\n2. Построение начальной симплекс-таблицы:");
-            var solution = BuildInitialTable(canonicalForm);
+                // Шаг 2: Построение начальной симплекс-таблицы
+                log.AppendLine("\n2. Построение начальной симплекс-таблицы:");
+                var solution = BuildInitialTable(canonicalForm);
 
-            // Шаг 3: Итерации симплекс-метода
-            log.AppendLine("\n3. Итерации симплекс-метода:");
-            PerformSimplexIterations(solution);
+                // Шаг 3: Итерации симплекс-метода
+                log.AppendLine("\n3. Итерации симплекс-метода:");
+                PerformSimplexIterations(solution, canonicalForm);
 
-            solution.Log = log.ToString();
-            return solution;
+                // Шаг 4: Извлечение решения
+                ExtractSolution(solution, canonicalForm, problem);
+
+                solution.Log = log.ToString();
+                return solution;
+            }
+            catch (Exception ex)
+            {
+                log.AppendLine($"Ошибка при решении: {ex.Message}");
+                return new SimplexSolution
+                {
+                    Log = log.ToString(),
+                    IsFeasible = false
+                };
+            }
         }
 
-        private (double[,] A, double[] b, double[] c, bool[] isArtificial)
+        private (double[,] A, double[] b, double[] c, bool[] isArtificial,
+                  int nVars, int nSlack, int nArtificial)
             ConvertToCanonicalForm(LinearProgrammingProblem problem)
         {
             int nVariables = problem.ObjectiveCoefficients.Count;
@@ -81,6 +100,12 @@ namespace SimplexSolver
             {
                 c[i] = problem.IsMaximization ? -problem.ObjectiveCoefficients[i].Value
                                              : problem.ObjectiveCoefficients[i].Value;
+            }
+
+            // Для искусственных переменных в целевой функции ставим большую цену (M-метод)
+            for (int i = nVariables + slackVars; i < totalVars; i++)
+            {
+                c[i] = problem.IsMaximization ? double.MaxValue / 1000 : -double.MaxValue / 1000;
             }
 
             // Индексы для дополнительных переменных
@@ -140,13 +165,15 @@ namespace SimplexSolver
                 }
             }
 
-            return (A, b, c, isArtificial);
+            return (A, b, c, isArtificial, nVariables, slackVars, artificialVars);
         }
 
-        private SimplexSolution BuildInitialTable((double[,] A, double[] b, double[] c, bool[] isArtificial) canonicalForm)
+        private SimplexSolution BuildInitialTable(
+            (double[,] A, double[] b, double[] c, bool[] isArtificial,
+             int nVars, int nSlack, int nArtificial) canonicalForm)
         {
-            int m = canonicalForm.b.Length;
-            int n = canonicalForm.c.Length;
+            int m = canonicalForm.b.Length; // количество ограничений
+            int n = canonicalForm.c.Length; // всего переменных
 
             var solution = new SimplexSolution
             {
@@ -159,42 +186,73 @@ namespace SimplexSolver
                 TableName = "Начальная симплекс-таблица"
             };
 
-            // Определяем начальный базис
+            // Определяем начальный базис (искусственные переменные имеют приоритет)
             int[] basis = new int[m];
             double[] cB = new double[m];
+
+            // Сначала размещаем искусственные переменные в базисе
             int basisCount = 0;
-
-            // Ищем единичные столбцы для начального базиса
-            for (int j = 0; j < n && basisCount < m; j++)
+            for (int j = canonicalForm.nVars + canonicalForm.nSlack;
+                 j < n && basisCount < m; j++)
             {
-                bool isUnitColumn = true;
-                int unitRow = -1;
-
                 for (int i = 0; i < m; i++)
                 {
-                    if (Math.Abs(canonicalForm.A[i, j] - 1) < 1e-10)
+                    if (Math.Abs(canonicalForm.A[i, j] - 1) < EPSILON)
                     {
-                        if (unitRow == -1)
-                            unitRow = i;
-                        else
+                        bool isUnitColumn = true;
+                        for (int k = 0; k < m; k++)
                         {
-                            isUnitColumn = false;
+                            if (k != i && Math.Abs(canonicalForm.A[k, j]) > EPSILON)
+                            {
+                                isUnitColumn = false;
+                                break;
+                            }
+                        }
+
+                        if (isUnitColumn && !basis.Contains(i))
+                        {
+                            basis[i] = j;
+                            cB[i] = canonicalForm.c[j];
+                            basisCount++;
                             break;
                         }
                     }
-                    else if (Math.Abs(canonicalForm.A[i, j]) > 1e-10)
+                }
+            }
+
+            // Затем дополнительные переменные
+            for (int j = canonicalForm.nVars;
+                 j < canonicalForm.nVars + canonicalForm.nSlack && basisCount < m; j++)
+            {
+                for (int i = 0; i < m; i++)
+                {
+                    if (Math.Abs(canonicalForm.A[i, j] - 1) < EPSILON)
                     {
-                        isUnitColumn = false;
-                        break;
+                        bool isUnitColumn = true;
+                        for (int k = 0; k < m; k++)
+                        {
+                            if (k != i && Math.Abs(canonicalForm.A[k, j]) > EPSILON)
+                            {
+                                isUnitColumn = false;
+                                break;
+                            }
+                        }
+
+                        if (isUnitColumn && !basis.Contains(i))
+                        {
+                            basis[i] = j;
+                            cB[i] = canonicalForm.c[j];
+                            basisCount++;
+                            break;
+                        }
                     }
                 }
+            }
 
-                if (isUnitColumn && unitRow != -1 && !basis.Contains(unitRow))
-                {
-                    basis[unitRow] = j;
-                    cB[unitRow] = canonicalForm.c[j];
-                    basisCount++;
-                }
+            log.AppendLine($"   Базисные переменные:");
+            for (int i = 0; i < m; i++)
+            {
+                log.AppendLine($"     x{basis[i] + 1} (строка {i + 1})");
             }
 
             // Заполняем строки таблицы
@@ -222,7 +280,7 @@ namespace SimplexSolver
                 CB = 0
             };
 
-            // Вычисляем оценки
+            // Вычисляем оценки Δj = cj - Σ(cBi * aij)
             for (int j = 0; j < n; j++)
             {
                 double delta = canonicalForm.c[j];
@@ -250,23 +308,308 @@ namespace SimplexSolver
             return solution;
         }
 
-        private void PerformSimplexIterations(SimplexSolution solution)
+        private void PerformSimplexIterations(
+            SimplexSolution solution,
+            (double[,] A, double[] b, double[] c, bool[] isArtificial,
+             int nVars, int nSlack, int nArtificial) canonicalForm)
         {
-            // Здесь должна быть полная реализация итераций симплекс-метода
-            // с пересчетом таблиц и проверкой оптимальности
+            int iteration = 0;
+            int maxIterations = 100; // защита от бесконечного цикла
 
-            // Временная заглушка
-            log.AppendLine("   Итерации симплекс-метода выполняются...");
-
-            // Для примера добавляем фиктивную вторую таблицу
-            var secondTable = new SimplexTable
+            while (iteration < maxIterations)
             {
-                TableName = "Вторая симплекс-таблица"
-            };
+                iteration++;
+                log.AppendLine($"\n   Итерация {iteration}:");
 
-            solution.Tables.Add(secondTable);
+                var currentTable = solution.Tables.Last();
+                int m = currentTable.Rows.Count - 1; // без F-строки
+                int n = currentTable.Rows[0].Coefficients.Count;
 
-            log.AppendLine("   Получено оптимальное решение!");
+                // Получаем последнюю строку (F-строку)
+                var fRow = currentTable.Rows[m];
+
+                // Проверка оптимальности для максимизации (все Δj >= 0)
+                // Для минимизации: все Δj <= 0
+                bool isOptimal = true;
+                int pivotColumn = -1;
+                double maxNegative = 0;
+
+                for (int j = 0; j < n; j++)
+                {
+                    double delta = fRow.Coefficients[j];
+
+                    // Для максимизации ищем отрицательные оценки
+                    // Для минимизации ищем положительные
+                    if (delta < -EPSILON)
+                    {
+                        isOptimal = false;
+                        if (delta < maxNegative)
+                        {
+                            maxNegative = delta;
+                            pivotColumn = j;
+                        }
+                    }
+                }
+
+                if (isOptimal)
+                {
+                    log.AppendLine("   Решение оптимально!");
+                    solution.IsOptimal = true;
+
+                    // Проверяем наличие искусственных переменных в базисе
+                    bool hasArtificialInBasis = false;
+                    for (int i = 0; i < m; i++)
+                    {
+                        int varIndex = GetVariableIndex(currentTable.Rows[i].BasisVariable);
+                        if (varIndex >= canonicalForm.nVars + canonicalForm.nSlack)
+                        {
+                            hasArtificialInBasis = true;
+                            break;
+                        }
+                    }
+
+                    if (hasArtificialInBasis && Math.Abs(fRow.RightHandSide) > EPSILON * 1000)
+                    {
+                        log.AppendLine("   В базисе остались искусственные переменные с ненулевыми значениями!");
+                        log.AppendLine("   Задача не имеет допустимого решения!");
+                        solution.IsFeasible = false;
+                    }
+                    else
+                    {
+                        solution.IsFeasible = true;
+                    }
+
+                    return;
+                }
+
+                if (pivotColumn == -1)
+                {
+                    log.AppendLine("   Не удалось найти разрешающий столбец!");
+                    break;
+                }
+
+                log.AppendLine($"   Разрешающий столбец: x{pivotColumn + 1} (Δ = {maxNegative:F4})");
+
+                // Находим разрешающую строку по минимальному симплексному отношению
+                int pivotRow = -1;
+                double minRatio = double.MaxValue;
+
+                for (int i = 0; i < m; i++)
+                {
+                    double aij = currentTable.Rows[i].Coefficients[pivotColumn];
+                    if (aij > EPSILON)
+                    {
+                        double ratio = currentTable.Rows[i].RightHandSide / aij;
+                        if (ratio < minRatio - EPSILON)
+                        {
+                            minRatio = ratio;
+                            pivotRow = i;
+                        }
+                    }
+                }
+
+                if (pivotRow == -1)
+                {
+                    log.AppendLine("   Нет положительных коэффициентов в разрешающем столбце!");
+                    log.AppendLine("   Задача неограничена!");
+                    solution.IsUnbounded = true;
+                    return;
+                }
+
+                log.AppendLine($"   Разрешающая строка: строка {pivotRow + 1} (θ = {minRatio:F4})");
+                log.AppendLine($"   Разрешающий элемент: a[{pivotRow + 1},{pivotColumn + 1}] = " +
+                              $"{currentTable.Rows[pivotRow].Coefficients[pivotColumn]:F4}");
+
+                // Создаем новую таблицу
+                var newTable = new SimplexTable
+                {
+                    TableName = $"Симплекс-таблица {iteration + 1}"
+                };
+
+                double pivotElement = currentTable.Rows[pivotRow].Coefficients[pivotColumn];
+
+                // Заполняем новую таблицу
+                for (int i = 0; i <= m; i++) // включая F-строку
+                {
+                    var newRow = new SimplexRow
+                    {
+                        BasisVariable = currentTable.Rows[i].BasisVariable,
+                        CB = currentTable.Rows[i].CB,
+                        RightHandSide = 0
+                    };
+
+                    // Копируем коэффициенты
+                    for (int j = 0; j < n; j++)
+                    {
+                        newRow.Coefficients.Add(0);
+                    }
+
+                    newTable.Rows.Add(newRow);
+                }
+
+                // Обновляем базисную переменную в разрешающей строке
+                newTable.Rows[pivotRow].BasisVariable = $"x{pivotColumn + 1}";
+                newTable.Rows[pivotRow].CB = canonicalForm.c[pivotColumn];
+
+                // Пересчитываем разрешающую строку
+                for (int j = 0; j < n; j++)
+                {
+                    newTable.Rows[pivotRow].Coefficients[j] =
+                        currentTable.Rows[pivotRow].Coefficients[j] / pivotElement;
+                }
+                newTable.Rows[pivotRow].RightHandSide =
+                    currentTable.Rows[pivotRow].RightHandSide / pivotElement;
+
+                // Пересчитываем остальные строки
+                for (int i = 0; i <= m; i++)
+                {
+                    if (i == pivotRow) continue;
+
+                    double factor = currentTable.Rows[i].Coefficients[pivotColumn];
+
+                    for (int j = 0; j < n; j++)
+                    {
+                        newTable.Rows[i].Coefficients[j] =
+                            currentTable.Rows[i].Coefficients[j] -
+                            factor * newTable.Rows[pivotRow].Coefficients[j];
+                    }
+
+                    newTable.Rows[i].RightHandSide =
+                        currentTable.Rows[i].RightHandSide -
+                        factor * newTable.Rows[pivotRow].RightHandSide;
+                }
+
+                solution.Tables.Add(newTable);
+
+                // Вычисляем новое значение F
+                double newFValue = 0;
+                for (int i = 0; i < m; i++)
+                {
+                    newFValue += newTable.Rows[i].CB * newTable.Rows[i].RightHandSide;
+                }
+                newTable.Rows[m].RightHandSide = newFValue;
+
+                log.AppendLine($"   Новое значение F = {newFValue:F4}");
+            }
+
+            if (iteration >= maxIterations)
+            {
+                log.AppendLine("   Превышено максимальное количество итераций!");
+            }
+        }
+
+        private int GetVariableIndex(string varName)
+        {
+            if (varName.StartsWith("x"))
+            {
+                string num = varName.Substring(1);
+                if (int.TryParse(num, out int index))
+                {
+                    return index - 1;
+                }
+            }
+            return -1;
+        }
+
+        private void ExtractSolution(
+            SimplexSolution solution,
+            (double[,] A, double[] b, double[] c, bool[] isArtificial,
+             int nVars, int nSlack, int nArtificial) canonicalForm,
+            LinearProgrammingProblem originalProblem)
+        {
+            if (!solution.IsOptimal || !solution.IsFeasible)
+            {
+                log.AppendLine("\n4. Решение не найдено или не оптимально!");
+                return;
+            }
+
+            var finalTable = solution.Tables.Last();
+            int m = finalTable.Rows.Count - 1; // без F-строки
+            int nVars = canonicalForm.nVars;
+
+            // Извлекаем значения переменных
+            double[] solutionVars = new double[nVars];
+            double[] slackVars = new double[canonicalForm.nSlack];
+
+            // Инициализируем нулями
+            for (int i = 0; i < nVars; i++) solutionVars[i] = 0;
+            for (int i = 0; i < canonicalForm.nSlack; i++) slackVars[i] = 0;
+
+            // Заполняем значения базисных переменных
+            for (int i = 0; i < m; i++)
+            {
+                int varIndex = GetVariableIndex(finalTable.Rows[i].BasisVariable);
+                if (varIndex >= 0)
+                {
+                    double value = finalTable.Rows[i].RightHandSide;
+
+                    if (varIndex < nVars)
+                    {
+                        solutionVars[varIndex] = value;
+                    }
+                    else if (varIndex < nVars + canonicalForm.nSlack)
+                    {
+                        slackVars[varIndex - nVars] = value;
+                    }
+                    // Искусственные переменные игнорируем
+                }
+            }
+
+            solution.Solution = solutionVars;
+            solution.SlackVariables = slackVars;
+            solution.OptimalValue = finalTable.Rows[m].RightHandSide;
+
+            // Корректируем знак для максимизации/минимизации
+            if (originalProblem.IsMaximization)
+            {
+                solution.OptimalValue = -solution.OptimalValue;
+            }
+
+            log.AppendLine("\n4. Извлечение решения:");
+            log.AppendLine($"   Оптимальное значение: F = {solution.OptimalValue:F2}");
+
+            log.AppendLine($"   Значения переменных:");
+            for (int i = 0; i < nVars; i++)
+            {
+                log.AppendLine($"     x{i + 1} = {solutionVars[i]:F2}");
+            }
+
+            if (canonicalForm.nSlack > 0)
+            {
+                log.AppendLine($"   Значения дополнительных переменных:");
+                for (int i = 0; i < canonicalForm.nSlack; i++)
+                {
+                    log.AppendLine($"     s{i + 1} = {slackVars[i]:F2}");
+                }
+            }
+
+            // Анализ использования ресурсов
+            log.AppendLine($"\n5. Анализ использования ресурсов:");
+            for (int i = 0; i < originalProblem.Constraints.Count; i++)
+            {
+                var constraint = originalProblem.Constraints[i];
+                double used = 0;
+
+                for (int j = 0; j < nVars; j++)
+                {
+                    used += solutionVars[j] * constraint.Coefficients[j].Value;
+                }
+
+                double remaining = constraint.RightHandSide - used;
+
+                log.AppendLine($"   {constraint.Name}:");
+                log.AppendLine($"     Использовано: {used:F2} из {constraint.RightHandSide:F2}");
+                log.AppendLine($"     Осталось: {remaining:F2}");
+
+                if (Math.Abs(remaining) < EPSILON)
+                {
+                    log.AppendLine($"     Ресурс использован полностью");
+                }
+                else if (remaining > 0)
+                {
+                    log.AppendLine($"     Ресурс использован не полностью");
+                }
+            }
         }
     }
 }

@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:SimplexSolver"
         mc:Ignorable="d"
         Title="Симплекс-метод - Решение задач ЛП" 
-        Height="700" Width="1100">
+        Height="800" Width="1200">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -63,9 +63,12 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Margin="5,0">
-                                    <TextBlock Text="{Binding Value}" VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Value, StringFormat=F2}" 
+                                             Width="40" VerticalAlignment="Center"/>
                                     <TextBlock Text=" * x" VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding Index}" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" +" VerticalAlignment="Center" 
+                                               Margin="0,0,5,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -122,7 +125,7 @@
                                                   VerticalAlignment="Center">
                                             <ComboBoxItem Content="&lt;="/>
                                             <ComboBoxItem Content="="/>
-                                            <ComboBoxItem Content=">="/>
+                                            <ComboBoxItem Content="&gt;="/>
                                         </ComboBox>
 
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" 
@@ -136,8 +139,8 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Orientation="Horizontal" Margin="5,0">
-                                                            <TextBlock Text="{Binding Value}" 
-                                                                       VerticalAlignment="Center"/>
+                                                            <TextBox Text="{Binding Value, StringFormat=F2}" 
+                                                                     Width="40" VerticalAlignment="Center"/>
                                                             <TextBlock Text=" * x" 
                                                                        VerticalAlignment="Center"/>
                                                             <TextBlock Text="{Binding Index}" 
@@ -151,7 +154,7 @@
                                             </ItemsControl>
                                         </StackPanel>
 
-                                        <TextBox Grid.Column="3" Text="{Binding RightHandSide}" 
+                                        <TextBox Grid.Column="3" Text="{Binding RightHandSide, StringFormat=F2}" 
                                                  Width="100" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
@@ -173,7 +176,7 @@
         <!-- Результаты -->
         <TabControl Grid.Row="4">
             <TabItem Header="Симплекс-таблицы">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                     <ItemsControl x:Name="icSimplexTables" Margin="10">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -182,12 +185,43 @@
                                               AutoGenerateColumns="False"
                                               IsReadOnly="True"
                                               CanUserAddRows="False"
-                                              CanUserDeleteRows="False">
+                                              CanUserDeleteRows="False"
+                                              GridLinesVisibility="All">
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="Базис" 
-                                                                Binding="{Binding BasisVariable}"/>
+                                                                Binding="{Binding BasisVariable}"
+                                                                Width="60"/>
                                             <DataGridTextColumn Header="Cб" 
-                                                                Binding="{Binding CB}"/>
+                                                                Binding="{Binding CB, StringFormat=F2}"
+                                                                Width="50"/>
+                                            <DataGridTemplateColumn Header="Коэффициенты">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <ItemsControl ItemsSource="{Binding Coefficients}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <StackPanel Orientation="Horizontal"/>
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border BorderBrush="LightGray" BorderThickness="1" 
+                                                                            Padding="5,2" Margin="1">
+                                                                        <TextBlock Text="{Binding StringFormat=F2}" 
+                                                                                   MinWidth="40" HorizontalAlignment="Center"/>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="Св.член" 
+                                                                Binding="{Binding RightHandSide, StringFormat=F2}"
+                                                                Width="70"/>
+                                            <DataGridTextColumn Header="θ" 
+                                                                Binding="{Binding Theta, StringFormat=F2}"
+                                                                Width="70"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
                                 </GroupBox>

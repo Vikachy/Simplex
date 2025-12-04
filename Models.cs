@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 
 namespace SimplexSolver
@@ -21,8 +22,7 @@ namespace SimplexSolver
         public event PropertyChangedEventHandler PropertyChanged;
         protected virtual void OnPropertyChanged(string propertyName)
         {
-            if (PropertyChanged != null)
-                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 
@@ -57,8 +57,7 @@ namespace SimplexSolver
         public event PropertyChangedEventHandler PropertyChanged;
         protected virtual void OnPropertyChanged(string propertyName)
         {
-            if (PropertyChanged != null)
-                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 
@@ -66,6 +65,7 @@ namespace SimplexSolver
     {
         public string TableName { get; set; }
         public ObservableCollection<SimplexRow> Rows { get; set; } = new ObservableCollection<SimplexRow>();
+        public List<string> ColumnHeaders { get; set; } = new List<string>();
     }
 
     public class SimplexRow
@@ -82,5 +82,15 @@ namespace SimplexSolver
         public bool IsMaximization { get; set; } = true;
         public ObservableCollection<Coefficient> ObjectiveCoefficients { get; set; } = new ObservableCollection<Coefficient>();
         public ObservableCollection<Constraint> Constraints { get; set; } = new ObservableCollection<Constraint>();
+    }
+
+    public class SolutionStep
+    {
+        public string Description { get; set; }
+        public double[,] Table { get; set; }
+        public int[] Basis { get; set; }
+        public double[] CB { get; set; }
+        public int PivotRow { get; set; } = -1;
+        public int PivotColumn { get; set; } = -1;
     }
 }
