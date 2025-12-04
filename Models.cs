@@ -66,6 +66,9 @@ namespace SimplexSolver
         public string TableName { get; set; }
         public ObservableCollection<SimplexRow> Rows { get; set; } = new ObservableCollection<SimplexRow>();
         public List<string> ColumnHeaders { get; set; } = new List<string>();
+        public int PivotRow { get; set; } = -1;
+        public int PivotColumn { get; set; } = -1;
+        public bool IsOptimal { get; set; }
     }
 
     public class SimplexRow
@@ -75,6 +78,7 @@ namespace SimplexSolver
         public ObservableCollection<double> Coefficients { get; set; } = new ObservableCollection<double>();
         public double RightHandSide { get; set; }
         public double? Theta { get; set; }
+        public bool IsPivotRow { get; set; }
     }
 
     public class LinearProgrammingProblem
@@ -82,15 +86,5 @@ namespace SimplexSolver
         public bool IsMaximization { get; set; } = true;
         public ObservableCollection<Coefficient> ObjectiveCoefficients { get; set; } = new ObservableCollection<Coefficient>();
         public ObservableCollection<Constraint> Constraints { get; set; } = new ObservableCollection<Constraint>();
-    }
-
-    public class SolutionStep
-    {
-        public string Description { get; set; }
-        public double[,] Table { get; set; }
-        public int[] Basis { get; set; }
-        public double[] CB { get; set; }
-        public int PivotRow { get; set; } = -1;
-        public int PivotColumn { get; set; } = -1;
     }
 }
