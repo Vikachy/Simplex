@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using System.IO;
 
 namespace SimplexSolver
 {
@@ -11,12 +12,12 @@ namespace SimplexSolver
     {
         private LinearProgrammingProblem currentProblem = new LinearProgrammingProblem();
         private SimplexMethod simplexSolver = new SimplexMethod();
+        private SimplexSolution currentSolution;
 
         public MainWindow()
         {
             InitializeComponent();
             DataContext = currentProblem;
-            LoadExample14();
         }
 
         private void LoadExample_Click(object sender, RoutedEventArgs e)
@@ -212,54 +213,200 @@ namespace SimplexSolver
                     return;
                 }
 
+                // Устанавливаем тип оптимизации
+                currentProblem.IsMaximization = (cmbGoal.SelectedIndex == 0);
+
                 // Решаем задачу
-                var solution = simplexSolver.Solve(currentProblem);
+                currentSolution = simplexSolver.Solve(currentProblem);
 
                 // Очищаем результаты
                 icSimplexTables.ItemsSource = null;
                 spResults.Children.Clear();
 
                 // Показываем симплекс-таблицы
-                icSimplexTables.ItemsSource = solution.Tables;
+                icSimplexTables.ItemsSource = currentSolution.Tables;
 
                 // Показываем решение
-                if (solution.Solution != null)
+                DisplaySolution();
+
+                // Показываем лог
+                txtLog.Text = currentSolution.Log;
+
+                if (currentSolution.IsOptimal && currentSolution.IsFeasible)
                 {
-                    tbSolution.Text = "Оптимальное решение найдено:";
-
-                    for (int i = 0; i < solution.Solution.Length; i++)
-                    {
-                        var textBlock = new TextBlock
-                        {
-                            Text = $"x{i + 1} = {solution.Solution[i]:F2}",
-                            FontSize = 14,
-                            Margin = new Thickness(20, 5, 0, 0)
-                        };
-                        spResults.Children.Add(textBlock);
-                    }
-
-                    tbOptimalValue.Text = $"Максимальная прибыль: {solution.OptimalValue:F2}";
+                    MessageBox.Show($"Решение найдено!\n" +
+                                  $"Оптимальное значение: {currentSolution.OptimalValue:F2}\n" +
+                                  $"Количество итераций: {currentSolution.Tables.Count - 1}",
+                                  "Решение готово",
+                                  MessageBoxButton.OK,
+                                  MessageBoxImage.Information);
                 }
                 else
                 {
-                    tbSolution.Text = "Решение не найдено или задача не имеет решения";
+                    MessageBox.Show($"Решение не найдено!\n" +
+                                  $"Оптимальность: {currentSolution.IsOptimal}\n" +
+                                  $"Допустимость: {currentSolution.IsFeasible}\n" +
+                                  $"Неограниченность: {currentSolution.IsUnbounded}",
+                                  "Результат",
+                                  MessageBoxButton.OK,
+                                  MessageBoxImage.Warning);
                 }
-
-                // Показываем лог
-                txtLog.Text = solution.Log;
-
-                MessageBox.Show("Решение найдено! Перейдите на вкладку 'Симплекс-таблицы' " +
-                              "для просмотра шагов решения или 'Решение' для итогов.",
-                              "Решение готово",
-                              MessageBoxButton.OK,
-                              MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при решении: {ex.Message}",
+                MessageBox.Show($"Ошибка при решении: {ex.Message}\n{ex.StackTrace}",
                               "Ошибка",
                               MessageBoxButton.OK,
                               MessageBoxImage.Error);
+            }
+        }
+
+        private void DisplaySolution()
+        {
+            spResults.Children.Clear();
+
+            if (currentSolution == null)
+                return;
+
+            if (!currentSolution.IsFeasible)
+            {
+                var tb = new TextBlock
+                {
+                    Text = "Задача не имеет допустимого решения!",
+                    FontSize = 14,
+                    Foreground = System.Windows.Media.Brushes.Red,
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                spResults.Children.Add(tb);
+                return;
+            }
+
+            if (currentSolution.IsUnbounded)
+            {
+                var tb = new TextBlock
+                {
+                    Text = "Задача неограничена! Целевая функция может принимать бесконечно большое значение.",
+                    FontSize = 14,
+                    Foreground = System.Windows.Media.Brushes.Orange,
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                spResults.Children.Add(tb);
+                return;
+            }
+
+            if (currentSolution.IsOptimal)
+            {
+                var tb1 = new TextBlock
+                {
+                    Text = "ОПТИМАЛЬНОЕ РЕШЕНИЕ НАЙДЕНО",
+                    FontSize = 16,
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(0, 0, 0, 20)
+                };
+                spResults.Children.Add(tb1);
+
+                var tb2 = new TextBlock
+                {
+                    Text = $"Оптимальное значение целевой функции:",
+                    FontSize = 14,
+                    Margin = new Thickness(0, 0, 0, 5)
+                };
+                spResults.Children.Add(tb2);
+
+                var tb3 = new TextBlock
+                {
+                    Text = $"F* = {currentSolution.OptimalValue:F2}",
+                    FontSize = 16,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = System.Windows.Media.Brushes.DarkGreen,
+                    Margin = new Thickness(20, 0, 0, 20)
+                };
+                spResults.Children.Add(tb3);
+
+                var tb4 = new TextBlock
+                {
+                    Text = "Значения переменных:",
+                    FontSize = 14,
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                spResults.Children.Add(tb4);
+
+                if (currentSolution.Solution != null)
+                {
+                    for (int i = 0; i < currentSolution.Solution.Length; i++)
+                    {
+                        var varTb = new TextBlock
+                        {
+                            Text = $"x{i + 1}* = {currentSolution.Solution[i]:F2}",
+                            FontSize = 14,
+                            Margin = new Thickness(20, 0, 0, 5)
+                        };
+                        spResults.Children.Add(varTb);
+                    }
+                }
+
+                if (currentSolution.SlackVariables != null && currentSolution.SlackVariables.Length > 0)
+                {
+                    var tb5 = new TextBlock
+                    {
+                        Text = "\nЗначения дополнительных переменных:",
+                        FontSize = 14,
+                        Margin = new Thickness(0, 10, 0, 10)
+                    };
+                    spResults.Children.Add(tb5);
+
+                    for (int i = 0; i < currentSolution.SlackVariables.Length; i++)
+                    {
+                        var slackTb = new TextBlock
+                        {
+                            Text = $"s{i + 1} = {currentSolution.SlackVariables[i]:F2}",
+                            FontSize = 14,
+                            Margin = new Thickness(20, 0, 0, 5)
+                        };
+                        spResults.Children.Add(slackTb);
+                    }
+                }
+
+                // Анализ использования ресурсов
+                var tb6 = new TextBlock
+                {
+                    Text = "\nАНАЛИЗ ИСПОЛЬЗОВАНИЯ РЕСУРСОВ:",
+                    FontSize = 14,
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(0, 20, 0, 10)
+                };
+                spResults.Children.Add(tb6);
+
+                for (int i = 0; i < currentProblem.Constraints.Count; i++)
+                {
+                    var constraint = currentProblem.Constraints[i];
+                    double used = 0;
+
+                    if (currentSolution.Solution != null)
+                    {
+                        for (int j = 0; j < Math.Min(currentSolution.Solution.Length,
+                                                     constraint.Coefficients.Count); j++)
+                        {
+                            used += currentSolution.Solution[j] * constraint.Coefficients[j].Value;
+                        }
+                    }
+
+                    double remaining = constraint.RightHandSide - used;
+                    string status = Math.Abs(remaining) < 0.001 ?
+                        "✓ Использован полностью" :
+                        $"Осталось: {remaining:F2}";
+
+                    var resourceTb = new TextBlock
+                    {
+                        Text = $"{constraint.Name}: {used:F2} из {constraint.RightHandSide:F2} - {status}",
+                        FontSize = 13,
+                        Margin = new Thickness(10, 0, 0, 5),
+                        Foreground = Math.Abs(remaining) < 0.001 ?
+                            System.Windows.Media.Brushes.DarkGreen :
+                            System.Windows.Media.Brushes.Black
+                    };
+                    spResults.Children.Add(resourceTb);
+                }
             }
         }
 
@@ -270,17 +417,105 @@ namespace SimplexSolver
             icSimplexTables.ItemsSource = null;
             txtLog.Text = "";
             spResults.Children.Clear();
+            currentSolution = null;
         }
 
         private void ExportToExcel_Click(object sender, RoutedEventArgs e)
         {
-            // Здесь будет реализация экспорта в Excel
-            // Используем библиотеку EPPlus или Interop Excel
+            try
+            {
+                SaveFileDialog saveDialog = new SaveFileDialog
+                {
+                    Filter = "Excel files (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+                    FileName = "Симплекс_решение.xlsx",
+                    DefaultExt = ".xlsx"
+                };
 
-            MessageBox.Show("Экспорт в Excel будет реализован в следующей версии",
-                          "В разработке",
-                          MessageBoxButton.OK,
-                          MessageBoxImage.Information);
+                if (saveDialog.ShowDialog() == true)
+                {
+                    ExportToExcel(saveDialog.FileName);
+                    MessageBox.Show("Результаты успешно экспортированы в Excel!",
+                                  "Экспорт завершен",
+                                  MessageBoxButton.OK,
+                                  MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка при экспорте в Excel: {ex.Message}",
+                              "Ошибка",
+                              MessageBoxButton.OK,
+                              MessageBoxImage.Error);
+            }
+        }
+
+        private void ExportToExcel(string filePath)
+        {
+            // Простая реализация экспорта в CSV (можно заменить на EPPlus)
+            using (StreamWriter writer = new StreamWriter(filePath))
+            {
+                // Заголовок
+                writer.WriteLine("Симплекс-метод: Решение задачи линейного программирования");
+                writer.WriteLine();
+
+                // Постановка задачи
+                writer.WriteLine("ПОСТАНОВКА ЗАДАЧИ:");
+                writer.Write("F(x) = ");
+                for (int i = 0; i < currentProblem.ObjectiveCoefficients.Count; i++)
+                {
+                    writer.Write($"{currentProblem.ObjectiveCoefficients[i].Value:F2} * x{i + 1}");
+                    if (i < currentProblem.ObjectiveCoefficients.Count - 1)
+                        writer.Write(" + ");
+                }
+                writer.WriteLine($" → {(currentProblem.IsMaximization ? "max" : "min")}");
+                writer.WriteLine();
+
+                writer.WriteLine("Ограничения:");
+                for (int i = 0; i < currentProblem.Constraints.Count; i++)
+                {
+                    var constraint = currentProblem.Constraints[i];
+                    writer.Write($"{constraint.Name}: ");
+
+                    for (int j = 0; j < constraint.Coefficients.Count; j++)
+                    {
+                        if (Math.Abs(constraint.Coefficients[j].Value) > 0.001)
+                        {
+                            writer.Write($"{constraint.Coefficients[j].Value:F2} * x{j + 1}");
+                            if (j < constraint.Coefficients.Count - 1)
+                                writer.Write(" + ");
+                        }
+                    }
+
+                    string sign = constraint.TypeIndex == 0 ? "<=" :
+                                 constraint.TypeIndex == 1 ? "=" : ">=";
+                    writer.WriteLine($" {sign} {constraint.RightHandSide:F2}");
+                }
+                writer.WriteLine();
+
+                // Результаты
+                if (currentSolution != null)
+                {
+                    writer.WriteLine("РЕЗУЛЬТАТЫ:");
+                    if (currentSolution.IsOptimal && currentSolution.IsFeasible)
+                    {
+                        writer.WriteLine($"Оптимальное значение: F* = {currentSolution.OptimalValue:F2}");
+                        writer.WriteLine("Значения переменных:");
+                        for (int i = 0; i < currentSolution.Solution.Length; i++)
+                        {
+                            writer.WriteLine($"  x{i + 1}* = {currentSolution.Solution[i]:F2}");
+                        }
+                    }
+                    else
+                    {
+                        writer.WriteLine("Решение не найдено или задача не имеет допустимого решения.");
+                    }
+                    writer.WriteLine();
+
+                    // Лог вычислений
+                    writer.WriteLine("ЛОГ ВЫЧИСЛЕНИЙ:");
+                    writer.WriteLine(currentSolution.Log);
+                }
+            }
         }
     }
 }
