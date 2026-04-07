@@ -10,8 +10,8 @@ namespace SimplexSolver
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is bool isOptimal && isOptimal)
-                return "✓ Таблица оптимальна";
-            return "🔄 Итерация продолжается";
+                return "Таблица оптимальна";
+            return "Итерация продолжается";
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
